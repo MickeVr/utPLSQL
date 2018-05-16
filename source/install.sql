@@ -151,6 +151,7 @@ prompt Installing PLSQL profiler objects into &&ut3_owner schema
 @@install_component.sql 'expectations/data_values/ut_data_value_timestamp_ltz.tps'
 @@install_component.sql 'expectations/data_values/ut_data_value_varchar2.tps'
 @@install_component.sql 'expectations/data_values/ut_data_value_yminterval.tps'
+@@install_component.sql 'expectations/matchers/ut_be_close_to.tps'
 @@install_component.sql 'expectations/matchers/ut_matcher.tps'
 @@install_component.sql 'expectations/matchers/ut_comparison_matcher.tps'
 @@install_component.sql 'expectations/matchers/ut_be_false.tps'
@@ -185,6 +186,7 @@ prompt Installing PLSQL profiler objects into &&ut3_owner schema
 @@install_component.sql 'expectations/data_values/ut_data_value_yminterval.tpb'
 @@install_component.sql 'expectations/matchers/ut_matcher.tpb'
 @@install_component.sql 'expectations/matchers/ut_comparison_matcher.tpb'
+@@install_component.sql 'expectations/matchers/ut_be_close_to.tpb'
 @@install_component.sql 'expectations/matchers/ut_be_false.tpb'
 @@install_component.sql 'expectations/matchers/ut_be_greater_or_equal.tpb'
 @@install_component.sql 'expectations/matchers/ut_be_greater_than.tpb'
@@ -244,6 +246,7 @@ prompt Installing PLSQL profiler objects into &&ut3_owner schema
 @@install_component.sql 'api/be_true.syn'
 @@install_component.sql 'api/equal.syn'
 @@install_component.sql 'api/match.syn'
+@@install_component.sql 'api/be_close_to.syn'
 
 set linesize 200
 set define on

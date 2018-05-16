@@ -1,0 +1,1 @@
+create synonym be_close_to for ut_be_close_to;
