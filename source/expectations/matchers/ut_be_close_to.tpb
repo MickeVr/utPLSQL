@@ -38,13 +38,13 @@ CREATE OR REPLACE TYPE BODY ut_be_close_to IS
       RETURN VARCHAR2 IS
    BEGIN
       RETURN (self AS ut_matcher).failure_message(a_actual) || ': ' || self.data_value.to_string_report(TRUE, FALSE) ||
-             ' with a precision of the first ' || self.data_precision.to_string_report(a_with_type_name => FALSE) || ' decimals';
+             ' with a precision of the first ' || self.data_precision.to_string_report(a_with_object_info => FALSE) || ' decimals';
    END;
    OVERRIDING MEMBER FUNCTION failure_message_when_negated(a_actual ut_data_value)
       RETURN VARCHAR2 IS
    BEGIN
       RETURN (self AS ut_matcher).failure_message_when_negated(a_actual) || ': ' || self.data_value.to_string_report(TRUE, FALSE) ||
-             ' with a precision of the first ' || self.data_precision.to_string_report(a_with_type_name => FALSE) || ' decimals';
+             ' with a precision of the first ' || self.data_precision.to_string_report(a_with_object_info => FALSE) || ' decimals';
    END;
 END;
 /
