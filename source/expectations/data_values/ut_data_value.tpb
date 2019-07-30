@@ -1,7 +1,7 @@
 create or replace type body ut_data_value as
   /*
   utPLSQL - Version 3
-  Copyright 2016 - 2017 utPLSQL Project
+  Copyright 2016 - 2019 utPLSQL Project
 
   Licensed under the Apache License, Version 2.0 (the "License"):
   you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ create or replace type body ut_data_value as
     raise value_error;
   end;
 
-  member function diff( a_other ut_data_value, a_exclude_xpath varchar2, a_include_xpath varchar2, a_join_by_xpath varchar2, a_unordered boolean :=false ) return varchar2 is
+  member function diff( a_other ut_data_value, a_match_options ut_matcher_options ) return varchar2 is
   begin
     return null;
   end;

@@ -1,4 +1,6 @@
-# utPLSQL v3<sub><sup> | Powerful PL/SQL Unit Testing Framework </sup></sub>
+![utPLSQL v3 | Testing Framework for PL/SQL](docs/images/utPLSQL-testing-framework-transparent_120.png)
+
+----------
 
 [![latest-release](https://img.shields.io/github/release/utPLSQL/utPLSQL.svg)](https://github.com/utPLSQL/utPLSQL/releases)
 [![license](https://img.shields.io/github/license/utPLSQL/utPLSQL.svg)](https://www.apache.org/licenses/LICENSE-2.0)
@@ -192,7 +194,7 @@ If you have a great feature in mind, that you would like to see in utPLSQL v3 pl
 | Auto Compilation of Tests              | Yes                    | No (Let us know if you use this) | 
 | Assertion Library                      | 30 assertions<sup>2</sup> | 26 matchers (13 + 13 negated) |
 | Extendable assertions                  | No                     | Yes - custom matchers  |
-| PLSQL Record Assertions	             | generated code through **utRecEq** Package | [possible on Oracle 12c](https://oracle-base.com/articles/12c/using-the-table-operator-with-locally-defined-types-in-plsql-12cr1) using [cursor matchers](docs/userguide/expectations.md#comparing-cursors)| 
+| PLSQL Record Assertions	             | generated code through **utRecEq** Package | [possible on Oracle 12c+](https://oracle-base.com/articles/12c/using-the-table-operator-with-locally-defined-types-in-plsql-12cr1) using [cursor matchers](docs/userguide/expectations.md#comparing-cursors)| 
 | Test Skeleton Generation               | Yes                    | No (Let us know if you use this) |
 | **Test Execution<sup>3</sup>**         |                        |                        |
 | Single Test Package Execution          |  Yes                   | Yes                    | 
@@ -233,3 +235,17 @@ __Project Directories__
 * examples - Example source code and unit tests
 * source - The installation code for utPLSQL
 * tests - Tests for utPLSQL framework
+
+-----------
+# Supporters
+
+The utPLSQL project is community-driven and is not commercially motivated. Nonetheless, donations and other contributions are always welcome, and are detailed below.
+
+<table>
+<tbody>
+<tr>
+<td><a href="https://www.red-gate.com/hub/events/open-source-projects" rel="nofollow"><img src="docs/images/supported_by_redgate_100.png" alt="supported_by_redgate" style="max-width:100%;"></a></td>
+<td>utPLSQL has been supported by Redgate in the form of sponsored stickers and t-shirts. Thank you for helping us spreading the word!</td>
+</tr>
+</tbody>
+</table>

@@ -2,7 +2,7 @@ create or replace package body ut is
 
   /*
   utPLSQL - Version 3
-  Copyright 2016 - 2017 utPLSQL Project
+  Copyright 2016 - 2019 utPLSQL Project
 
   Licensed under the Apache License, Version 2.0 (the "License"):
   you may not use this file except in compliance with the License.
@@ -18,6 +18,10 @@ create or replace package body ut is
   */
 
   g_nls_date_format varchar2(4000);
+  gc_fail_on_errors constant boolean := false;
+
+  g_result_line_no binary_integer;
+  g_result_lines   ut_varchar2_list := ut_varchar2_list();
 
   function version return varchar2 is
   begin
@@ -26,7 +30,7 @@ create or replace package body ut is
 
   function expect(a_actual in anydata, a_message varchar2 := null) return ut_expectation_compound is
   begin
-    return ut_expectation_compound(ut_data_value_anydata.get_instance(a_actual), a_message);
+    return ut_expectation_compound(ut_data_value_anydata(a_actual), a_message);
   end;
 
   function expect(a_actual in blob, a_message varchar2 := null) return ut_expectation is
@@ -89,6 +93,11 @@ create or replace package body ut is
     return ut_expectation(ut_data_value_dsinterval(a_actual), a_message);
   end;
 
+  function expect(a_actual in json_element_t , a_message varchar2 := null) return ut_expectation_json is
+  begin
+    return ut_expectation_json(ut_data_value_json(a_actual), a_message);
+  end;
+  
   procedure fail(a_message in varchar2) is
   begin
     ut_expectation_processor.report_failure(a_message);
@@ -109,15 +118,17 @@ create or replace package body ut is
     a_paths ut_varchar2_list,
     a_reporter in out nocopy ut_reporter_base,
     a_color_console integer,
-    a_coverage_schemes ut_varchar2_list := null,
+    a_coverage_schemes ut_varchar2_list,
     a_source_file_mappings ut_file_mappings,
     a_test_file_mappings ut_file_mappings,
     a_include_objects ut_varchar2_list,
     a_exclude_objects ut_varchar2_list,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2,
+    a_random_test_order     integer,
+    a_random_test_order_seed     positive,
+    a_tags varchar2 := null
   ) is
     pragma autonomous_transaction;
-    c_fail_on_errors constant boolean := false;
   begin
     a_reporter := coalesce(a_reporter,ut_documentation_reporter());
     ut_runner.run(
@@ -129,8 +140,12 @@ create or replace package body ut is
       a_test_file_mappings,
       a_include_objects,
       a_exclude_objects,
-      c_fail_on_errors,
-      a_client_character_set
+      gc_fail_on_errors,
+      a_client_character_set,
+      false,
+      ut_utils.int_to_boolean(a_random_test_order),
+      a_random_test_order_seed,
+      a_tags
     );
     rollback;
   end;
@@ -139,15 +154,17 @@ create or replace package body ut is
     a_paths ut_varchar2_list,
     a_reporter in out nocopy ut_reporter_base,
     a_color_console integer,
-    a_coverage_schemes ut_varchar2_list := null,
+    a_coverage_schemes ut_varchar2_list,
     a_source_files ut_varchar2_list,
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list,
     a_exclude_objects ut_varchar2_list,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2,
+    a_random_test_order    integer,
+    a_random_test_order_seed    positive,
+    a_tags varchar2 := null
   ) is
     pragma autonomous_transaction;
-    c_fail_on_errors constant boolean := false;
   begin
     a_reporter := coalesce(a_reporter,ut_documentation_reporter());
     ut_runner.run(
@@ -159,12 +176,41 @@ create or replace package body ut is
       ut_file_mapper.build_file_mappings(a_test_files),
       a_include_objects,
       a_exclude_objects,
-      c_fail_on_errors,
-      a_client_character_set
+      gc_fail_on_errors,
+      a_client_character_set,
+      false,
+      ut_utils.int_to_boolean(a_random_test_order),
+      a_random_test_order_seed,
+      a_tags
     );
     rollback;
   end;
 
+  function get_report_outputs( a_cursor sys_refcursor ) return varchar2 is
+    l_clob      clob;
+    l_item_type varchar2(32767);
+    l_result    varchar2(4000);
+  begin
+    if g_result_line_no is null then
+      fetch a_cursor into l_clob, l_item_type;
+      if a_cursor%notfound then
+        close a_cursor;
+        g_result_line_no := null;
+        g_result_lines   := ut_varchar2_list();
+        raise_if_packages_invalidated();
+        raise no_data_found;
+      end if;
+      g_result_lines   := ut_utils.clob_to_table(l_clob, ut_utils.gc_max_storage_varchar2_len);
+      g_result_line_no := g_result_lines.first;
+    end if;
+    
+    if g_result_line_no is not null then
+      l_result         := g_result_lines(g_result_line_no);
+      g_result_line_no := g_result_lines.next(g_result_line_no);
+    end if;
+    return l_result;
+  end;
+
   function run(
     a_reporter ut_reporter_base := null,
     a_color_console integer := 0,
@@ -173,11 +219,13 @@ create or replace package body ut is
     a_test_file_mappings ut_file_mappings := null,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_random_test_order     integer := 0,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) return ut_varchar2_rows pipelined is
     l_reporter  ut_reporter_base := a_reporter;
-    l_lines     sys_refcursor;
-    l_line      varchar2(4000);
+    l_results   sys_refcursor;
   begin
     run_autonomous(
       ut_varchar2_list(),
@@ -188,18 +236,17 @@ create or replace package body ut is
       a_test_file_mappings,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
     if l_reporter is of (ut_output_reporter_base) then
-      l_lines := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
+      l_results := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
       loop
-        fetch l_lines into l_line;
-        exit when l_lines%notfound;
-        pipe row(l_line);
+        pipe row( get_report_outputs( l_results ) );
       end loop;
-      close l_lines;
     end if;
-    raise_if_packages_invalidated();
     return;
   end;
 
@@ -211,11 +258,13 @@ create or replace package body ut is
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_random_test_order     integer := 0,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) return ut_varchar2_rows pipelined is
     l_reporter  ut_reporter_base := a_reporter;
-    l_lines     sys_refcursor;
-    l_line      varchar2(4000);
+    l_results   sys_refcursor;
   begin
     run_autonomous(
       ut_varchar2_list(),
@@ -226,18 +275,17 @@ create or replace package body ut is
       a_test_files,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
     if l_reporter is of (ut_output_reporter_base) then
-      l_lines := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
+      l_results := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
       loop
-        fetch l_lines into l_line;
-        exit when l_lines%notfound;
-        pipe row(l_line);
+        pipe row( get_report_outputs( l_results ) );
       end loop;
-      close l_lines;
     end if;
-    raise_if_packages_invalidated();
     return;
   end;
 
@@ -250,11 +298,13 @@ create or replace package body ut is
     a_test_file_mappings ut_file_mappings := null,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_random_test_order     integer := 0,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) return ut_varchar2_rows pipelined is
     l_reporter  ut_reporter_base := a_reporter;
-    l_lines     sys_refcursor;
-    l_line      varchar2(4000);
+    l_results   sys_refcursor;
   begin
     run_autonomous(
       a_paths,
@@ -265,18 +315,17 @@ create or replace package body ut is
       a_test_file_mappings,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
     if l_reporter is of (ut_output_reporter_base) then
-      l_lines := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
+      l_results := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
       loop
-        fetch l_lines into l_line;
-        exit when l_lines%notfound;
-        pipe row(l_line);
+        pipe row( get_report_outputs( l_results ) );
       end loop;
-      close l_lines;
     end if;
-    raise_if_packages_invalidated();
     return;
   end;
 
@@ -289,11 +338,13 @@ create or replace package body ut is
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_random_test_order     integer := 0,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) return ut_varchar2_rows pipelined is
     l_reporter  ut_reporter_base := a_reporter;
-    l_lines     sys_refcursor;
-    l_line      varchar2(4000);
+    l_results   sys_refcursor;
   begin
     run_autonomous(
       a_paths,
@@ -304,18 +355,17 @@ create or replace package body ut is
       a_test_files,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
     if l_reporter is of (ut_output_reporter_base) then
-      l_lines := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
+      l_results := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
       loop
-        fetch l_lines into l_line;
-        exit when l_lines%notfound;
-        pipe row(l_line);
+        pipe row( get_report_outputs( l_results ) );
       end loop;
-      close l_lines;
     end if;
-    raise_if_packages_invalidated();
     return;
   end;
 
@@ -328,11 +378,13 @@ create or replace package body ut is
     a_test_file_mappings ut_file_mappings := null,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_random_test_order     integer := 0,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) return ut_varchar2_rows pipelined is
-    l_reporter  ut_reporter_base := a_reporter;
-    l_lines     sys_refcursor;
-    l_line      varchar2(4000);
+    l_reporter     ut_reporter_base := a_reporter;
+    l_results      sys_refcursor;
   begin
     run_autonomous(
       ut_varchar2_list(a_path),
@@ -343,18 +395,17 @@ create or replace package body ut is
       a_test_file_mappings,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
     if l_reporter is of (ut_output_reporter_base) then
-      l_lines := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
+      l_results := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
       loop
-        fetch l_lines into l_line;
-        exit when l_lines%notfound;
-        pipe row(l_line);
+        pipe row( get_report_outputs( l_results ) );
       end loop;
-      close l_lines;
     end if;
-    raise_if_packages_invalidated();
     return;
   end;
 
@@ -367,11 +418,13 @@ create or replace package body ut is
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_random_test_order     integer := 0,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) return ut_varchar2_rows pipelined is
     l_reporter  ut_reporter_base := a_reporter;
-    l_lines     sys_refcursor;
-    l_line      varchar2(4000);
+    l_results   sys_refcursor;
   begin
     run_autonomous(
       ut_varchar2_list(a_path),
@@ -382,18 +435,17 @@ create or replace package body ut is
       a_test_files,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
     if l_reporter is of (ut_output_reporter_base) then
-      l_lines := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
+      l_results := treat(l_reporter as ut_output_reporter_base).get_lines_cursor();
       loop
-        fetch l_lines into l_line;
-        exit when l_lines%notfound;
-        pipe row(l_line);
+        pipe row( get_report_outputs( l_results ) );
       end loop;
-      close l_lines;
     end if;
-    raise_if_packages_invalidated();
     return;
   end;
 
@@ -406,21 +458,48 @@ create or replace package body ut is
     a_test_file_mappings ut_file_mappings := null,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_force_manual_rollback boolean := false,
+    a_random_test_order     boolean := false,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) is
     l_reporter  ut_reporter_base := a_reporter;
   begin
-    run_autonomous(
-      a_paths,
-      l_reporter,
-      ut_utils.boolean_to_int(a_color_console),
-      a_coverage_schemes,
-      a_source_file_mappings,
-      a_test_file_mappings,
-      a_include_objects,
-      a_exclude_objects,
-      a_client_character_set
-    );
+    if a_force_manual_rollback then
+      l_reporter := coalesce(l_reporter,ut_documentation_reporter());
+      ut_runner.run(
+        a_paths,
+        ut_reporters(l_reporter),
+        a_color_console,
+        a_coverage_schemes,
+        a_source_file_mappings,
+        a_test_file_mappings,
+        a_include_objects,
+        a_exclude_objects,
+        gc_fail_on_errors,
+        a_client_character_set,
+        a_force_manual_rollback,
+        a_random_test_order,
+        a_random_test_order_seed,
+        a_tags
+      );
+    else
+      run_autonomous(
+        a_paths,
+        l_reporter,
+        ut_utils.boolean_to_int(a_color_console),
+        a_coverage_schemes,
+        a_source_file_mappings,
+        a_test_file_mappings,
+        a_include_objects,
+        a_exclude_objects,
+        a_client_character_set,
+        ut_utils.boolean_to_int(a_random_test_order),
+        a_random_test_order_seed,
+        a_tags
+      );
+    end if;
     if l_reporter is of (ut_output_reporter_base) then
         treat(l_reporter as ut_output_reporter_base).lines_to_dbms_output();
     end if;
@@ -436,25 +515,29 @@ create or replace package body ut is
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_force_manual_rollback boolean := false,
+    a_random_test_order     boolean := false,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) is
     l_reporter  ut_reporter_base := a_reporter;
   begin
-    run_autonomous(
+    ut.run(
       a_paths,
       l_reporter,
-      ut_utils.boolean_to_int(a_color_console),
+      a_color_console,
       a_coverage_schemes,
-      a_source_files,
-      a_test_files,
+      ut_file_mapper.build_file_mappings(a_source_files),
+      ut_file_mapper.build_file_mappings(a_test_files),
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_force_manual_rollback,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
-    if l_reporter is of (ut_output_reporter_base) then
-      treat(l_reporter as ut_output_reporter_base).lines_to_dbms_output();
-    end if;
-    raise_if_packages_invalidated();
   end;
 
   procedure run(
@@ -465,7 +548,11 @@ create or replace package body ut is
     a_test_file_mappings ut_file_mappings := null,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_force_manual_rollback boolean := false,
+    a_random_test_order     boolean := false,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) is
   begin
     ut.run(
@@ -477,7 +564,11 @@ create or replace package body ut is
       a_test_file_mappings,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_force_manual_rollback,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
   end;
 
@@ -489,7 +580,11 @@ create or replace package body ut is
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_force_manual_rollback boolean := false,
+    a_random_test_order     boolean := false,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) is
   begin
     ut.run(
@@ -501,7 +596,11 @@ create or replace package body ut is
       a_test_files,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_force_manual_rollback,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
   end;
 
@@ -514,7 +613,11 @@ create or replace package body ut is
     a_test_file_mappings ut_file_mappings := null,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_force_manual_rollback boolean := false,
+    a_random_test_order     boolean := false,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) is
   begin
     ut.run(
@@ -526,7 +629,11 @@ create or replace package body ut is
       a_test_file_mappings,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_force_manual_rollback,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
   end;
 
@@ -539,7 +646,11 @@ create or replace package body ut is
     a_test_files ut_varchar2_list,
     a_include_objects ut_varchar2_list := null,
     a_exclude_objects ut_varchar2_list := null,
-    a_client_character_set varchar2 := null
+    a_client_character_set varchar2 := null,
+    a_force_manual_rollback boolean := false,
+    a_random_test_order     boolean := false,
+    a_random_test_order_seed     positive := null,
+    a_tags varchar2 := null
   ) is
   begin
     ut.run(
@@ -551,9 +662,14 @@ create or replace package body ut is
       a_test_files,
       a_include_objects,
       a_exclude_objects,
-      a_client_character_set
+      a_client_character_set,
+      a_force_manual_rollback,
+      a_random_test_order,
+      a_random_test_order_seed,
+      a_tags
     );
   end;
+
 
   procedure set_nls is
   begin

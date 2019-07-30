@@ -1,7 +1,7 @@
 create global temporary table ut_compound_data_tmp(
   /*
   utPLSQL - Version 3
-  Copyright 2016 - 2017 utPLSQL Project
+  Copyright 2016 - 2019 utPLSQL Project
   Licensed under the Apache License, Version 2.0 (the "License"):
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
@@ -18,5 +18,6 @@ create global temporary table ut_compound_data_tmp(
   item_hash        raw(128),
   pk_hash          raw(128),
   duplicate_no     integer,
-  constraint ut_cmp_data_tmp_hash_pk unique (data_id,item_no, item_hash , duplicate_no)
+  constraint ut_cmp_data_tmp_hash_pk unique (data_id, item_no, duplicate_no)
 ) on commit preserve rows;
+--xmltype column item_data store as binary xml;

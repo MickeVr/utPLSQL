@@ -1,3 +1,5 @@
+![version](https://img.shields.io/badge/version-v3.1.7.3085-blue.svg)
+
 # Annotations
 
 Annotations are used to configure tests and suites in a declarative way similar to modern OOP languages. This way, test configuration is stored along with the test logic inside the test package.
@@ -19,7 +21,7 @@ We strongly recommend putting package level annotations at the very top of packa
 | --- | --- | --- |
 | `--%suite(<description>)` | Package | Mandatory. Marks package as a test suite. Optional suite description can be provided (see `displayname`). |
 | `--%suitepath(<path>)` | Package | Similar to java package. The annotation allows logical grouping of suites into hierarchies. |
-| `--%displayname(<description>)` | Package/procedure | Human-readable and meaningful description of a suite/test. `%displayname(Name of the suite/test)`. The annotation is provided for flexibility and convenience only. It has exactly the same meaning as `<description>` in `test` and `suite` annotations. If description is provided using both `suite`/`test` and `displayname`, then the one defined as last takes precedence. |
+| `--%displayname(<description>)` | Package/procedure | Human-readable and meaningful description of a context/suite/test. Provides description to a `context` when used within `context`. When used with `test` or `suite` annotation, overrides the `<description>` provided with `suite`/`test`. |
 | `--%test(<description>)` | Procedure | Denotes that the annotated procedure is a unit test procedure.  Optional test description can by provided (see `displayname`). |
 | `--%throws(<exception>[,...])`| Procedure | Denotes that the annotated test procedure must throw one of the exceptions provided. Supported forms of exceptions are: numeric literals, numeric contant names, exception constant names, predefined Oracle exception names. |
 | `--%beforeall` | Procedure | Denotes that the annotated procedure should be executed once before all elements of the suite. |
@@ -36,6 +38,7 @@ We strongly recommend putting package level annotations at the very top of packa
 | `--%disabled` | Package/procedure | Used to disable a suite or a test. Disabled suites/tests do not get executed, they are however marked and reported as disabled in a test run. |
 | `--%context(<name>)` | Package | Denotes start of a named context (sub-suite) in a suite package |
 | `--%endcontext` | Package | Denotes end of a nested context (sub-suite) in a suite package |
+| `--%tags` | Package/procedure | Used to label a test or a suite for purpose of identification |
 
 ### Suite
 
@@ -821,7 +824,7 @@ See [beforeall](#Beforeall) for more examples.
 Indicates specific setup procedure(s) to be executed for a test. The procedure(s) can be located either:
 - within current package (package name is optional)
 - within another package 
- 
+
 The annotation need to be placed alongside `--%test` annotation.
 
 The `--%beforetest` procedures are executed after invoking all `--%beforeeach` for a test.
@@ -909,7 +912,7 @@ Finished in .015185 seconds
 Indicates specific cleanup procedure(s) to be executed for a test. The procedure(s) can be located either:
 - within current package (package name is optional)
 - within another package 
- 
+
 The annotation need to be placed alongside `--%test` annotation.
 
 If a test is marked as disabled the `--%aftertest` procedures are not invoked for that test.
@@ -1089,7 +1092,7 @@ create or replace package test_rooms_management is
 
   
   --%context(remove_rooms_by_name)
-  --%description(Remove rooms by name)
+  --%displayname(Remove rooms by name)
   
     --%test(Removes a room without content in it)
     procedure remove_empty_room;
@@ -1102,14 +1105,14 @@ create or replace package test_rooms_management is
   
   
   --%context(add_rooms_content)
-  --%description(Add content to a room)
+  --%displayname(Add content to a room)
 
     --%test(Fails when room name is not valid)
     --%throws(no_data_found)
     procedure fails_on_room_name_invalid;
 
     --%test(Fails when content name is null)
-    --%throws(gc_null_value_exception)
+    --%throws(test_rooms_management.gc_null_value_exception)
     procedure fails_on_content_null;
 
     --%test(Adds a content to existing room)
@@ -1146,7 +1149,7 @@ create or replace package body test_rooms_management is
   begin
     open l_rooms_not_named_b for select * from rooms where name not like 'B%';
 
-    remove_rooms_by_name('B%');
+    rooms_management.remove_rooms_by_name('B%');
 
     open l_remaining_rooms for select * from rooms;
     ut.expect( l_remaining_rooms ).to_equal(l_rooms_not_named_b);
@@ -1154,23 +1157,27 @@ create or replace package body test_rooms_management is
 
   procedure room_with_content is
   begin
-    remove_rooms_by_name('Living Room');
+    rooms_management.remove_rooms_by_name('Living Room');
   end;
 
   procedure null_room_name is
   begin
-    remove_rooms_by_name(NULL);
+    --Act
+    rooms_management.remove_rooms_by_name(NULL);
+    --Assert done by --%throws annotation
   end;
 
   procedure fails_on_room_name_invalid is
   begin
-    add_rooms_content('bad room name','Chair');
+    --Act
+    rooms_management.add_rooms_content('bad room name','Chair');
+    --Assert done by --%throws annotation
   end;
 
   procedure fails_on_content_null is
   begin
     --Act
-    add_rooms_content('Dining Room',null);
+    rooms_management.add_rooms_content('Dining Room',null);
     --Assert done by --%throws annotation
   end;
 
@@ -1182,7 +1189,7 @@ create or replace package body test_rooms_management is
     l_expected := 'Table';
 
     --Act
-    add_rooms_content( 'Dining Room', l_expected );
+    rooms_management.add_rooms_content( 'Dining Room', l_expected );
     --Assert
     select name into l_actual from room_contents
      where contents_key = (select max(contents_key) from room_contents);
@@ -1196,7 +1203,7 @@ end;
 
 When te tests are executed
 ```sql
-exec ut.run('test_package');
+exec ut.run('test_rooms_management');
 ```
 The following report is displayed
 ```
@@ -1213,6 +1220,98 @@ Rooms management
 Finished in .035261 seconds
 5 tests, 0 failed, 0 errored, 0 disabled, 0 warning(s)
 ```
+
+
+
+### Tags
+
+Tag is a label attached to the test or a suite path. It is used for identification and execution a group of tests / suites that share same tag.  
+
+It allows us to group a tests / suites using a various categorization and place a test / suite in multiple buckets. Same tests can be group with other tests based on the functionality , frequency, type of output etc.
+
+e.q. 
+
+```sql
+--%tags(batch,daily,csv)
+```
+
+or
+
+```sql
+--%tags(api,online,json)
+```
+
+
+
+Tags are defined as a coma separated list. When executing a test run with tag filter applied, framework will find all tests associated with given tags and execute them. Framework applies `OR` logic when resolving a tags so any tests / suites that match at least one tag will be included in the test run. 
+
+When a suite gets tagged all of its children will automatically inherit a tag and get executed along the parent. Parent suit tests are not executed. but a suitepath hierarchy is kept.
+
+Sample tag package.
+
+```sql
+create or replace package ut_sample_test IS
+
+   --%suite(Sample Test Suite)
+   --%tag(suite1)
+
+   --%test(Compare Ref Cursors)
+   --%tag(test1,sample)
+   procedure ut_refcursors1;
+
+   --%test(Run equality test)
+   --%tag(test2,sample)
+   procedure ut_test;
+   
+end ut_sample_test;
+/
+
+create or replace package body ut_sample_test is
+
+   procedure ut_refcursors1 is
+      v_actual   sys_refcursor;
+      v_expected sys_refcursor;
+   begin
+    open v_expected for select 1 as test from dual;
+    open v_actual   for select 2 as test from dual;
+
+      ut.expect(v_actual).to_equal(v_expected);
+   end;
+   
+   procedure ut_test is
+   begin
+       ut.expect(1).to_equal(0);
+   end;
+   
+end ut_sample_test;
+/
+```
+
+Execution of the test is done by using a parameter `a_tags`
+
+```sql
+select * from table(ut.run(a_path => 'ut_sample_test',a_tags => 'suite1'));
+select * from table(ut.run(a_tags => 'test1,test2'));
+select * from table(ut.run(a_tags => 'sample'));
+
+begin
+  ut.run(a_path => 'ut_sample_test',a_tags => 'suite1');
+end;
+/
+
+exec ut.run('ut_sample_test', a_tags => 'sample');
+```
+
+
+
+Tags should adhere to following rules:
+
+- tags are case sensitive
+- tags cannot be an empty string
+- tags cannot contain spaces e.g. to create a multi-word `tag` please use underscores,dashes, dots etc. e.g. `test_of_batch`
+- tags with empty spaces will be ignored during execution
+- tags can contain special characters
+
 
 
 ### Suitepath
@@ -1340,9 +1439,9 @@ If `--%throws` annotation is specified with arguments and exception raised is no
 The framework will raise a warning, when `--%throws` annotation has invalid arguments or when no arguments were provided.
 
 Annotation `--%throws(7894562, operaqk, -=1, -20496, pow74d, posdfk3)` will be interpreted as `--%throws(-20496)`.
- 
+
 Please note that `NO_DATA_FOUND` exception is a special case in Oracle. To capture it use `NO_DATA_FOUND` named exception or `-1403` exception No.
-                                                                                                        
+​                                                                                                        
 Example:
 ```sql
 create or replace package exc_pkg is
